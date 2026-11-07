@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Value Match Finder | Over 1.5 & AH -1</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen p-4 md:p-8">
+
+  <div class="max-w-6xl mx-auto space-y-6">
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-800 pb-4 gap-4">
+      <div>
+        <h1 class="text-2xl font-bold text-emerald-400">Match Screener: Over 1.5 & AH -1</h1>
+        <p class="text-slate-400 text-sm">Filter matches by xG thresholds, defensive leakage, and home advantage.</p>
+      </div>
+      <div class="flex gap-2">
+        <span class="bg-slate-800 border border-slate-700 px-3 py-1 rounded text-xs text-slate-300 flex items-center">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 mr-2"></span> AH -1 Push Safe
+        </span>
+        <span class="bg-slate-800 border border-slate-700 px-3 py-1 rounded text-xs text-slate-300 flex items-center">
+          <span class="w-2 h-2 rounded-full bg-blue-500 mr-2"></span> Over 1.5 Target
+        </span>
+      </div>
+    </div>
+
+    <!-- Screener Settings Bar -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-800/60 border border-slate-700/50 p-4 rounded-xl">
+      <div>
+        <label class="block text-xs font-semibold text-slate-400 mb-1">Min Favorite xG (Home)</label>
+        <input type="number" id="minXg" value="1.8" step="0.1" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-emerald-500 text-slate-200">
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-400 mb-1">Max Opposition Clean Sheets</label>
+        <input type="number" id="maxCs" value="25" step="5" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-emerald-500 text-slate-200">
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-400 mb-1">Target Strategy</label>
+        <select id="strategyFilter" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-emerald-500 text-slate-200">
+          <option value="all">All Evaluated Fixtures</option>
+          <option value="ah1">Asian Handicap -1 Priority</option>
+          <option value="o15">Over 1.5 Goals Priority</option>
+        </select>
+      </div>
+      <div class="flex items-end">
+        <button id="runFilterBtn" class="w-full bg-emerald-600 hover:bg-emerald-500 font-semibold text-white py-1.5 px-4 rounded text-sm transition">
+          Apply Filter Rules
+        </button>
+      </div>
+    </div>
+
+    <!-- Match Grid -->
+    <div id="matchGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <!-- Fixtures dynamically rendered here -->
+    </div>
+
+    <!-- Compounding Step Simulator -->
+    <div class="bg-slate-800/40 border border-slate-700/50 p-6 rounded-xl space-y-4">
+      <h2 class="text-lg font-bold text-slate-200">Compounding Stake Calculator (Push Handling)</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-slate-900 border border-slate-700 p-4 rounded-lg">
+          <span class="text-xs text-slate-400 block mb-1">Current Bankroll / Stake</span>
+          <div id="currentStakeDisplay" class="text-2xl font-black text-emerald-400">£10.00</div>
+        </div>
+        <div class="bg-slate-900 border border-slate-700 p-4 rounded-lg">
+          <span class="text-xs text-slate-400 block mb-1">Estimated Odds</span>
+          <input type="number" id="matchOdds" value="1.42" step="0.01" class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 focus:outline-none">
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btnWin" class="flex-1 bg-emerald-600/80 hover:bg-emerald-600 py-3 rounded text-xs font-bold uppercase tracking-wider">Win (Full)</button>
+          <button id="btnPush" class="flex-1 bg-amber-600/80 hover:bg-amber-600 py-3 rounded text-xs font-bold uppercase tracking-wider">Push (Refund)</button>
+          <button id="btnReset" class="px-3 py-3 bg-slate-700 hover:bg-slate-600 rounded text-xs">Reset</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const sampleFixtures = [
+      { home: "Arsenal", away: "Hull City", homeXg: 2.1, awayXga: 1.8, over15Prob: 88, ah1CoverRate: 74 },
+      { home: "Liverpool", away: "Man United", homeXg: 2.4, awayXga: 1.6, over15Prob: 84, ah1CoverRate: 68 },
+      { home: "Brighton", away: "Brentford", homeXg: 1.9, awayXga: 1.4, over15Prob: 79, ah1CoverRate: 58 },
+      { home: "Man City", away: "Fulham", homeXg: 2.5, awayXga: 1.9, over15Prob: 91, ah1CoverRate: 80 }
+    ];
+
+    let currentBankroll = 10.00;
+
+    function renderFixtures() {
+      const minXg = parseFloat(document.getElementById('minXg').value) || 0;
+      const strategy = document.getElementById('strategyFilter').value;
+      const grid = document.getElementById('matchGrid');
+      grid.innerHTML = '';
+
+      sampleFixtures.forEach(fix => {
+        if (fix.homeXg < minXg) return;
+
+        const isAh1Qualified = fix.ah1CoverRate >= 65;
+        const isO15Qualified = fix.over15Prob >= 80;
+
+        if (strategy === 'ah1' && !isAh1Qualified) return;
+        if (strategy === 'o15' && !isO15Qualified) return;
+
+        const card = document.createElement('div');
+        card.className = "bg-slate-800 border border-slate-700 p-4 rounded-xl space-y-3";
+        card.innerHTML = `
+          <div class="flex justify-between items-center">
+            <span class="font-bold text-slate-100">${fix.home} vs ${fix.away}</span>
+            <span class="text-xs bg-slate-900 text-slate-400 px-2 py-0.5 rounded border border-slate-700">Home xG: ${fix.homeXg}</span>
+          </div>
+          <div class="space-y-1 text-xs">
+            <div class="flex justify-between">
+              <span class="text-slate-400">Over 1.5 Prob:</span>
+              <span class="font-semibold ${isO15Qualified ? 'text-blue-400' : 'text-slate-300'}">${fix.over15Prob}%</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">AH -1 Cover Rate:</span>
+              <span class="font-semibold ${isAh1Qualified ? 'text-emerald-400' : 'text-slate-300'}">${fix.ah1CoverRate}%</span>
+            </div>
+          </div>
+          <div class="pt-2 border-t border-slate-700/50 flex gap-1">
+            ${isAh1Qualified ? '<span class="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800/60 px-2 py-0.5 rounded font-mono">QUALIFIED: AH -1</span>' : ''}
+            ${isO15Qualified ? '<span class="text-[10px] bg-blue-950 text-blue-300 border border-blue-800/60 px-2 py-0.5 rounded font-mono">QUALIFIED: O1.5</span>' : ''}
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    document.getElementById('runFilterBtn').addEventListener('click', renderFixtures);
+    
+    document.getElementById('btnWin').addEventListener('click', () => {
+      const odds = parseFloat(document.getElementById('matchOdds').value) || 1.4;
+      currentBankroll = currentBankroll * odds;
+      document.getElementById('currentStakeDisplay').innerText = `£${currentBankroll.toFixed(2)}`;
+    });
+
+    document.getElementById('btnPush').addEventListener('click', () => {
+      // Stake remains identical on push (1-goal margin victory)
+      document.getElementById('currentStakeDisplay').innerText = `£${currentBankroll.toFixed(2)} (Push - Stake Kept)`;
+    });
+
+    document.getElementById('btnReset').addEventListener('click', () => {
+      currentBankroll = 10.00;
+      document.getElementById('currentStakeDisplay').innerText = `£10.00`;
+    });
+
+    renderFixtures();
+  </script>
+</body>
+</html>
